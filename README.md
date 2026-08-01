@@ -125,6 +125,13 @@ community and Mary Sue Protocol interfaces.
 
 If you contribute, contribute your own work, for the same reason.
 
-Enemy RP is MIT licensed — see `LICENSE`. That is a starting point rather than a
-settled decision; if you would rather it were GPL, say so before the first
-release, while changing it is still easy.
+Enemy RP is licensed under the **GNU General Public License, version 3 or
+later** — see `LICENSE` for the full text. In short: use it, change it, share
+it, but anything you distribute that is built on it has to carry the same
+freedoms and ship its source. An addon that exists because a closed one stopped
+being maintainable should not be able to become that addon.
+
+This is compatible with Blizzard's addon policy, which already requires addons
+to be distributed free of charge and with source available.
+
+By contributing you agree that your contribution is licensed the same way.

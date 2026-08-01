@@ -1,3 +1,11 @@
+-- Enemy RP -- cross-faction roleplay profiles for World of Warcraft
+-- Copyright (C) 2026 Enemy RP contributors
+--
+-- This program is free software: you can redistribute it and/or modify it under
+-- the terms of the GNU General Public License as published by the Free Software
+-- Foundation, either version 3 of the License, or (at your option) any later
+-- version. See the LICENSE file for the full text.
+
 -- Profile/Sync.lua
 -- The policy layer: who we announce ourselves to, whose profile we ask for,
 -- and what we answer when asked.

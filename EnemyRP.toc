@@ -4,7 +4,7 @@
 ## Author: Enemy RP contributors
 ## Version: 0.1.0
 ## SavedVariables: EnemyRPDB
-## X-License: MIT
+## X-License: GPL-3.0-or-later
 ## X-Category: Roleplay
 ## OptionalDeps: TotalRP3, MyRolePlay, XRP, TotalRP3_Extended
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
