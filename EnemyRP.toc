@@ -1,4 +1,4 @@
-## Interface: 110200
+## Interface: 120007
 ## Title: Enemy RP
 ## Notes: See roleplay profiles across the faction divide.
 ## Author: Enemy RP contributors

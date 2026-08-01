@@ -29,9 +29,9 @@ World of Warcraft/_retail_/Interface/AddOns/EnemyRP/
 
 The folder name has to be `EnemyRP` — it must match `EnemyRP.toc`.
 
-Check the `## Interface:` line at the top of `EnemyRP.toc` against your client
-before first use; a stale interface number is the usual reason an addon shows up
-as out of date.
+Built against retail client **12.0.7** (`## Interface: 120007`). If your client
+is newer, bump that line in `EnemyRP.toc`; a stale interface number is the usual
+reason an addon shows up as out of date.
 
 ## Setting it up
 
