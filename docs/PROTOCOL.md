@@ -118,6 +118,58 @@ Receivers must discard any field code outside the schema in
 roleplay addon — the field code becomes a table key, and a peer must not be able
 to choose arbitrary keys.
 
+### `CH` — chat
+
+```
+CH <kind> <mapId> <x> <y> <packed>
+```
+
+| Field | Format | Meaning |
+| --- | --- | --- |
+| `<kind>` | `S`, `E`, `Y`, `T` | say, emote, yell, predefined text emote |
+| `<mapId>` | integer | the speaker's `uiMapID` |
+| `<x>`, `<y>` | `0.0000`..`1.0000` | the speaker's map-normalized position |
+| `<packed>` | encoded value | the message |
+
+Broadcast, because the sender cannot know who is in earshot.
+
+The position is the whole point. A receiver cannot measure the distance to a
+character the client does not know exists, so the speaker states where it is and
+the receiver decides whether that is close enough. Both ends are converted to a
+continent world position, which is measured in yards; a normalized offset is not
+a distance, because the same offset spans a city or a continent depending on the
+map. Positions outside `0..1` are rejected, and a pair that cannot be placed on a
+shared continent is treated as out of range.
+
+Range is the receiver's policy, not the sender's: defaults are 40 yards for say
+and emote, 300 for yell.
+
+Nothing here is authenticated. A community member can send `CH` claiming any
+name, at any position, at any time. The range check, the per-sender rate limit
+and the ignore list make relayed chat *behave*; they do not make it *true*.
+Receivers must therefore:
+
+- strip every escape sequence from the text before display (see below),
+- rate limit per sender,
+- never create a roster entry from a `CH` frame alone, so chat cannot populate
+  the profile cache with characters that never announced themselves.
+
+#### Display safety
+
+Chat that arrives from the game server is sanitized by the client. Text an addon
+passes to `AddMessage` is **not**, so a relayed line is an arbitrary string being
+handed to a renderer that interprets `|` escapes. Left alone, a sender could put
+a hyperlink of their choosing into every reader's chat frame.
+
+Before display, receivers strip colour codes, textures and atlas markup, collapse
+`|Hlink|h[text]|h` to `[text]`, and remove any pipe that is not part of a `||`
+pair. Well-formed `||` survives, because that is how `AddMessage` renders one
+literal pipe. The invariant is that `|` is never followed by anything other than
+another `|`.
+
+The same treatment applies to the `NA` field when it is used as a display name,
+and the name is length-capped: it is peer-supplied like everything else.
+
 ### `BY` — farewell
 
 ```

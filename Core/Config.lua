@@ -53,6 +53,40 @@ local DEFAULTS = {
     cacheDays = 14,
     cacheLimit = 500,
 
+    ---------------------------------------------------------------- chat ------
+
+    chatEnabled = true,
+
+    -- Which of your own chat types get relayed, and which relayed types you
+    -- want shown. Separate on purpose: reading the other faction without
+    -- broadcasting yourself is a reasonable thing to want.
+    chatSend = { SAY = true, EMOTE = true, YELL = true, TEXT_EMOTE = true },
+    chatShow = { SAY = true, EMOTE = true, YELL = true, TEXT_EMOTE = true },
+
+    -- Speech range in yards. The client's own values are roughly these; they
+    -- are settings because relayed range is a judgement call, not a fact.
+    chatRangeSay = 40,
+    chatRangeYell = 300,
+
+    -- Drop relayed lines from a sender past this many per minute.
+    chatMessagesPerMinute = 30,
+
+    -- Do not put your chat on the relay when no cross-faction player has been
+    -- heard from on your map recently. Costs up to one heartbeat interval of
+    -- silence when someone new arrives; saves broadcasting an entire roleplay
+    -- session to a community where nobody is listening.
+    chatOnlyWhenListeners = true,
+
+    -- Prepended to every relayed line. Empty by default because relayed names
+    -- are already faction-coloured, which native chat never is.
+    chatPrefix = "",
+
+    -- Only understand the other faction while Elixir of Tongues is up. Off by
+    -- default; the spell id is a setting so it can be corrected without a code
+    -- change if Blizzard ever reissues the item.
+    requireTongues = false,
+    tonguesSpellId = 7178,
+
     profiles = {}, -- fullName -> { faction, fields, versions, seen, map, token }
 }
 

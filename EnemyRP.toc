@@ -15,6 +15,7 @@ Core/Config.lua
 Core/Codec.lua
 Core/Protocol.lua
 Core/Chunker.lua
+Core/Geo.lua
 
 Transport/Relay.lua
 Transport/ClubLink.lua
@@ -23,6 +24,9 @@ Transport/BNetLink.lua
 Profile/Cache.lua
 Profile/MSPBridge.lua
 Profile/Sync.lua
+
+Chat/Outbound.lua
+Chat/Inbound.lua
 
 UI/Slash.lua
 UI/Roster.lua

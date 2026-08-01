@@ -30,8 +30,72 @@ local function usage()
     ns:Print("  |cffffff00/erp fetch <name>|r - request a full profile now")
     ns:Print("  |cffffff00/erp forget <name>|r - drop a cached profile")
     ns:Print("  |cffffff00/erp on|r / |cffffff00off|r - enable or disable the relay")
+    ns:Print("  |cffffff00/erp chat|r - cross-faction chat settings")
     ns:Print("  |cffffff00/erp debug|r - toggle verbose logging")
     ns:Print("  |cffffff00/erp reset|r - restore defaults and clear the cache")
+end
+
+local CHAT_TYPES = { say = "SAY", emote = "EMOTE", yell = "YELL", textemote = "TEXT_EMOTE" }
+
+local function chatUsage()
+    ns:Print("chat relay is %s",
+        ns.db.chatEnabled and "|cff40ff40on|r" or "|cffff4040off|r")
+
+    local sending, showing = {}, {}
+    for word, chatType in pairs(CHAT_TYPES) do
+        if ns.db.chatSend[chatType] then sending[#sending + 1] = word end
+        if ns.db.chatShow[chatType] then showing[#showing + 1] = word end
+    end
+    table.sort(sending)
+    table.sort(showing)
+
+    ns:Print("  sending: %s", #sending > 0 and table.concat(sending, ", ") or "nothing")
+    ns:Print("  showing: %s", #showing > 0 and table.concat(showing, ", ") or "nothing")
+    ns:Print("  range: %d yards, %d for yells", ns.db.chatRangeSay, ns.db.chatRangeYell)
+    ns:Print("  elixir of tongues required: %s", ns.db.requireTongues and "yes" or "no")
+    ns:Print("|cffffff00/erp chat on|off|r, |cffffff00send <type>|r, |cffffff00show <type>|r,")
+    ns:Print("|cffffff00range <yards>|r, |cffffff00prefix <text>|r, |cffffff00tongues|r")
+    ns:Print("types: say, emote, yell, textemote")
+end
+
+local function chatCommand(argument)
+    local word, rest = argument:match("^(%S*)%s*(.-)$")
+    word = word:lower()
+
+    if word == "" then
+        chatUsage()
+    elseif word == "on" or word == "off" then
+        ns.db.chatEnabled = (word == "on")
+        ns:Print("chat relay %s", word)
+    elseif word == "send" or word == "show" then
+        local chatType = CHAT_TYPES[rest:lower()]
+        if not chatType then
+            ns:Print("|cffff4040unknown chat type '%s'|r - say, emote, yell, textemote", rest)
+            return
+        end
+        local setting = (word == "send") and ns.db.chatSend or ns.db.chatShow
+        setting[chatType] = not setting[chatType]
+        ns:Print("%s %s: %s", word == "send" and "sending" or "showing",
+            rest:lower(), setting[chatType] and "on" or "off")
+    elseif word == "range" then
+        local yards = tonumber(rest)
+        if not yards or yards <= 0 then
+            ns:Print("usage: /erp chat range <yards>")
+            return
+        end
+        ns.db.chatRangeSay = yards
+        ns:Print("say and emote range set to %d yards", yards)
+    elseif word == "prefix" then
+        ns.db.chatPrefix = rest
+        ns:Print("prefix set to '%s'", rest)
+    elseif word == "tongues" then
+        ns.db.requireTongues = not ns.db.requireTongues
+        ns:Print("elixir of tongues %s",
+            ns.db.requireTongues and "now required to understand the other faction"
+            or "no longer required")
+    else
+        chatUsage()
+    end
 end
 
 local function status()
@@ -51,6 +115,7 @@ local function status()
         ns:Print("community: |cffffff00not configured|r - run /erp clubs")
     end
 
+    ns:Print("chat relay: %s", ns.db.chatEnabled and "|cff40ff40on|r" or "|cffff4040off|r")
     ns:Print("battle.net friends in game: %d", ns.BNetLink:RouteCount())
     ns:Print("cached profiles: %d, transfers in progress: %d",
         Cache:Count(), ns.Chunker:PendingCount())
@@ -91,6 +156,7 @@ local handlers = {}
 handlers.status = status
 handlers.clubs = listClubs
 handlers.who = who
+handlers.chat = chatCommand
 
 handlers.club = function(argument)
     if argument == "" then

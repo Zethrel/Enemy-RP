@@ -35,6 +35,7 @@ Protocol.OPCODE = {
     HEARTBEAT = "HB", -- presence and profile fingerprint
     REQUEST   = "RQ", -- ask a named peer for fields
     RESPONSE  = "RS", -- deliver fields to the requester
+    CHAT      = "CH", -- a line of say/emote/yell, with where it was spoken
     FAREWELL  = "BY", -- leaving; drop me from your roster
 }
 
@@ -202,4 +203,48 @@ function Protocol.DecodeHeartbeat(payload)
     local mapId, tooltipVersion, fingerprint = payload:match("^(%d+) (%d+) (%w+)$")
     if not mapId then return nil end
     return tonumber(mapId), tonumber(tooltipVersion), fingerprint
+end
+
+--------------------------------------------------------------------------------
+-- Chat payloads
+--
+-- `<kind> <mapId> <x> <y> <packedText>`. The position is the speaker's own,
+-- stated so the receiver can apply speech range to someone the client cannot
+-- see. Coordinates are map-normalized to four decimals, which is roughly a
+-- yard on a continent map and far finer than any range check needs.
+--------------------------------------------------------------------------------
+
+Protocol.CHAT_KIND = {
+    SAY        = "S",
+    EMOTE      = "E",
+    YELL       = "Y",
+    TEXT_EMOTE = "T",
+}
+
+Protocol.CHAT_TYPE = {}
+for chatType, kind in pairs(Protocol.CHAT_KIND) do
+    Protocol.CHAT_TYPE[kind] = chatType
+end
+
+function Protocol.EncodeChat(kind, mapId, x, y, text)
+    return ("%s %d %.4f %.4f %s"):format(kind, mapId or 0, x or 0, y or 0, Codec.Pack(text))
+end
+
+function Protocol.DecodeChat(payload)
+    if type(payload) ~= "string" then return nil end
+
+    local kind, mapId, x, y, packed =
+        payload:match("^(%a) (%d+) (%d+%.%d+) (%d+%.%d+) (.+)$")
+    if not kind or not Protocol.CHAT_TYPE[kind] then return nil end
+
+    x, y = tonumber(x), tonumber(y)
+    if not x or not y then return nil end
+    -- Positions outside the map are either a bug or an attempt to dodge the
+    -- range check by claiming to be everywhere.
+    if x < 0 or x > 1 or y < 0 or y > 1 then return nil end
+
+    local text = Codec.Unpack(packed)
+    if not text or text == "" then return nil end
+
+    return Protocol.CHAT_TYPE[kind], tonumber(mapId), x, y, text
 end

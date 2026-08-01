@@ -13,6 +13,9 @@ format Total RP 3, MyRolePlay and XRP share, so a Horde Total RP user and an
 Alliance XRP user can read each other with nothing special configured on either
 side.
 
+It also relays **say, emote and yell**, so you can actually hold a conversation
+across the divide rather than just read each other's profiles.
+
 ## Status
 
 Early. The protocol is implemented and tested end to end against a simulated
@@ -69,6 +72,7 @@ community entirely.
 | `/erp who` | Characters seen in the last ten minutes |
 | `/erp fetch <name>` | Request someone's full profile now |
 | `/erp forget <name>` | Drop a cached profile |
+| `/erp chat` | Chat relay settings |
 | `/erp on` / `/erp off` | Enable or disable the relay |
 | `/erp debug` | Verbose logging |
 | `/erp reset` | Restore defaults and clear the cache |
@@ -76,6 +80,33 @@ community entirely.
 Day to day you should not need any of these. Mousing over or targeting someone
 on the other faction fetches their profile, and your roleplay addon displays it
 the same way it displays anyone else's.
+
+## Chat
+
+Say, emote and yell are relayed both ways and appear in whichever chat window
+you already show that chat type in. Range is respected — 40 yards for say and
+emote, 300 for yell, measured properly in yards rather than by map coordinates —
+so someone across the zone does not turn up in your chat.
+
+Sending and showing are separate settings, because reading the other faction
+without broadcasting yourself is a reasonable thing to want:
+
+```
+/erp chat send yell      toggle relaying your own yells
+/erp chat show emote     toggle showing their emotes
+/erp chat range 30       tighten say and emote range
+/erp chat off            stop both directions
+```
+
+For the immersive option, `/erp chat tongues` makes the other faction
+unintelligible unless you are under Elixir of Tongues. Off by default. If it
+ever stops detecting the buff, the spell id is a setting rather than a constant
+— that check is the one part of this that has not been verified against a live
+client.
+
+Relayed speakers are shown with their roleplay name where one is cached, and
+always faction-coloured, which native chat never is — that colouring is how you
+tell a relayed line from a real one.
 
 ## What it costs
 
@@ -95,8 +126,18 @@ your character's name, current zone, and online times are visible to them.
 
 Relay frames carry the sender's character name in the payload, and nothing
 prevents a member of the community from putting someone else's name there.
-Profiles are therefore claims, not proof of identity. Treat them the way you
-would treat a whisper from an unverified alt.
+Profiles and relayed chat are therefore claims, not proof of identity. Treat
+them the way you would treat a whisper from an unverified alt.
+
+This matters more for chat than for profiles: someone in your community can put
+words in another character's mouth, and the addon cannot tell. What it does do
+is strip every escape sequence from relayed text before displaying it, so a
+sender cannot inject clickable links or colour codes into your chat frame, rate
+limit each sender, and honour your ignore list. If a name is being abused, the
+practical fix is removing that person from the community.
+
+Chat is only broadcast when a cross-faction character has been heard from on
+your map recently, so an empty room costs nothing.
 
 `/erp off` stops all outbound traffic.
 
@@ -109,8 +150,9 @@ lua5.1 tests/run.lua
 ```
 
 It covers the encoder, the frame parser (including a fuzz pass over mutated
-frames), chunk reassembly, and a full two-client exchange from heartbeat to
-injected profile. Please keep it green.
+frames), chunk reassembly, a full two-client exchange from heartbeat to injected
+profile, and the chat relay end to end including range, gating and the display
+sanitizer. Please keep it green.
 
 `docs/PROTOCOL.md` is the normative description of the wire format. Changing the
 format means bumping `ns.PROTOCOL` in `Core/Init.lua`, which also changes the

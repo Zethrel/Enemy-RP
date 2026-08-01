@@ -178,6 +178,41 @@ function wow.newClient(spec)
     end
     env.SlashCmdList = {}
 
+    ------------------------------------------------------------------- chat ---
+    env.UnitGUID = function(unit)
+        return unit == "player" and ("Player-" .. spec.name) or nil
+    end
+    env.ChatTypeInfo = {
+        SAY = { r = 1, g = 1, b = 1 },
+        EMOTE = { r = 1, g = 0.5, b = 0.25 },
+        YELL = { r = 1, g = 0.25, b = 0.25 },
+        TEXT_EMOTE = { r = 1, g = 0.5, b = 0.25 },
+    }
+    env.CHAT_SAY_GET = "%s says: "
+    env.CHAT_YELL_GET = "%s yells: "
+    env.CHAT_EMOTE_GET = "%s "
+    env.C_FriendList = {
+        IsIgnored = function(name) return (spec.ignored or {})[name] == true end,
+    }
+    env.C_UnitAuras = {
+        GetPlayerAuraBySpellID = function(spellId)
+            return spec.auras and spec.auras[spellId] or nil
+        end,
+    }
+
+    -- One chat window, registered for every relayed chat type, recording what
+    -- it was asked to display.
+    env.__chatLog = {}
+    env.CHAT_FRAMES = { "ChatFrame1" }
+    env.ChatFrame1 = {
+        IsEventRegistered = function(_, event)
+            return event:match("^CHAT_MSG_") ~= nil
+        end,
+        AddMessage = function(_, line)
+            env.__chatLog[#env.__chatLog + 1] = line
+        end,
+    }
+
     ------------------------------------------------------------------ timers --
     env.C_Timer = {
         After = function(delay, callback) schedule(delay, callback) end,
@@ -188,9 +223,32 @@ function wow.newClient(spec)
     }
 
     -------------------------------------------------------------------- maps --
+    -- Maps live on a continent and scale map units to yards. Two points 0.01
+    -- apart on map 84 are therefore 10 yards apart, which makes range
+    -- assertions readable.
+    local MAPS = {
+        [84] = { continent = 13, scale = 1000 },   -- Stormwind
+        [85] = { continent = 13, scale = 1000 },   -- Orgrimmar, same continent
+        [1] = { continent = 12, scale = 1000 },    -- somewhere else entirely
+    }
+
+    env.CreateVector2D = function(x, y)
+        return { x = x, y = y, GetXY = function(self) return self.x, self.y end }
+    end
+
     env.C_Map = {
         GetBestMapForUnit = function() return spec.mapId or 84 end,
         GetMapInfo = function(id) return { name = "Map " .. tostring(id) } end,
+        GetPlayerMapPosition = function(_, unit)
+            if unit ~= "player" or not spec.position then return nil end
+            return env.CreateVector2D(spec.position.x, spec.position.y)
+        end,
+        GetWorldPosFromMapPos = function(mapId, position)
+            local map = MAPS[mapId]
+            if not map then return nil end
+            local x, y = position:GetXY()
+            return map.continent, env.CreateVector2D(x * map.scale, y * map.scale)
+        end,
     }
 
     ------------------------------------------------------------------- clubs --
@@ -302,9 +360,10 @@ end
 
 local FILES = {
     "Core/Init.lua", "Core/Util.lua", "Core/Config.lua", "Core/Codec.lua",
-    "Core/Protocol.lua", "Core/Chunker.lua",
+    "Core/Protocol.lua", "Core/Chunker.lua", "Core/Geo.lua",
     "Transport/Relay.lua", "Transport/ClubLink.lua", "Transport/BNetLink.lua",
     "Profile/Cache.lua", "Profile/MSPBridge.lua", "Profile/Sync.lua",
+    "Chat/Outbound.lua", "Chat/Inbound.lua",
     "UI/Slash.lua", "UI/Roster.lua",
 }
 

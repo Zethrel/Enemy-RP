@@ -5,9 +5,10 @@ what keeps the interesting parts testable outside the game.
 
 ```
   UI/            roster window, /erp commands
+  Chat/          relaying and displaying say, emote and yell
   Profile/       what to ask for, what to answer, what to keep
   Transport/     how bytes leave and arrive
-  Core/          framing, encoding, chunking, plumbing
+  Core/          framing, encoding, chunking, geometry, plumbing
 ```
 
 ## Core
@@ -24,6 +25,11 @@ over a community or a Battle.net whisper.
 `Codec.lua`, `Protocol.lua` and `Chunker.lua` implement the wire format
 described in [PROTOCOL.md](PROTOCOL.md). None of them touch the game API beyond
 `GetTime`, so the test suite exercises them directly.
+
+`Geo.lua` answers "how far away is someone the client cannot see". Map
+positions are normalized 0..1 and say nothing about yards, so both ends go
+through `C_Map.GetWorldPosFromMapPos` onto a shared continent grid before being
+compared.
 
 `Util.lua` holds identity helpers, the FNV-1a hash used for profile
 fingerprints, and a token-bucket send queue. Every outbound path goes through
@@ -84,6 +90,27 @@ same crowd every evening. Entries expire after `cacheDays` and are pruned to
 - on a request addressed to us, answer within the per-requester budget
 - on a response, drop unknown field codes, cache, and hand to the RP addon
 
+## Chat
+
+`Outbound.lua` listens for `CHAT_MSG_SAY` and friends rather than hooking
+`SendChatMessage`. The events fire on what the server actually accepted, so
+muted, throttled and filtered messages never reach the relay, and lines sent by
+other addons are picked up for free. It refuses to broadcast when no
+cross-faction character has been heard from on the current map, which keeps an
+entire roleplay session off the community channel when nobody is listening.
+
+`Inbound.lua` is the least trusted code in the addon, and the only place that
+renders a stranger's text. Everything else the addon receives ends up in a cache
+or a profile field; this ends up in the player's chat frame, where `AddMessage`
+interprets `|` escapes and an unsanitized line would let a sender inject
+hyperlinks into every reader's chat. `Inbound.Sanitize` strips colour codes,
+textures and atlas markup, collapses hyperlinks to their display text, and
+removes any pipe not part of a `||` pair.
+
+The rest is gating, in order: master switch, faction (same-faction speech is
+already audible and would show twice), chat type, per-sender rate limit, ignore
+list, range, and the optional Elixir of Tongues requirement.
+
 ## UI
 
 `Roster.lua` lists who the relay has heard from. It deliberately does not render
@@ -111,8 +138,10 @@ that it returns nil rather than raising.
 
 ## Not implemented
 
-- Cross-faction chat relay. The transport layer would carry it; the policy and
-  UI work (chat bubbles, range, translation gating) is a project of its own.
+- Chat bubbles. Relayed speech goes to chat frames only; the client will not
+  raise a bubble over a character it does not know is there.
+- Any authentication of relayed chat. A community member can claim any name at
+  any position. Range and rate limits are behavioural, not evidential.
 - Compression. Codec has the seam for it. Version markers and fingerprints keep
   profiles off the wire in the first place, which is the larger win, so it has
   not been worth the bug surface yet.
