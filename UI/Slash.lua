@@ -1,0 +1,176 @@
+-- UI/Slash.lua
+-- /erp command surface. Configuration lives here rather than in an options
+-- panel because the settings that matter are one-time (which community to use)
+-- and are easier to paste to a guild than to describe as a click path.
+
+local ADDON, ns = ...
+
+local Slash = ns:NewModule("Slash")
+
+local Util = ns.Util
+local Cache = ns.Cache
+local Bridge = ns.Bridge
+
+local function usage()
+    ns:Print("commands:")
+    ns:Print("  |cffffff00/erp|r - show the roster window")
+    ns:Print("  |cffffff00/erp status|r - connection and cache summary")
+    ns:Print("  |cffffff00/erp clubs|r - list Battle.net communities you belong to")
+    ns:Print("  |cffffff00/erp club <name>|r - use that community as the relay")
+    ns:Print("  |cffffff00/erp stream <name>|r - use a specific channel in it")
+    ns:Print("  |cffffff00/erp who|r - characters seen in the last 10 minutes")
+    ns:Print("  |cffffff00/erp fetch <name>|r - request a full profile now")
+    ns:Print("  |cffffff00/erp forget <name>|r - drop a cached profile")
+    ns:Print("  |cffffff00/erp on|r / |cffffff00off|r - enable or disable the relay")
+    ns:Print("  |cffffff00/erp debug|r - toggle verbose logging")
+    ns:Print("  |cffffff00/erp reset|r - restore defaults and clear the cache")
+end
+
+local function status()
+    ns:Print("version %s, protocol %d, relay %s",
+        ns.VERSION, ns.PROTOCOL, ns.db.enabled and "|cff40ff40on|r" or "|cffff4040off|r")
+
+    local host = Bridge:HostAddon()
+    ns:Print("roleplay addon: %s", host or "|cffff4040none detected|r")
+
+    local club = ns.ClubLink
+    if club:IsReady() then
+        ns:Print("community: |cff40ff40%s|r / %s",
+            club.clubDisplayName or "?", club.streamDisplayName or "?")
+    elseif ns.db.clubName then
+        ns:Print("community: |cffff4040'%s' not found|r (are you still a member?)", ns.db.clubName)
+    else
+        ns:Print("community: |cffffff00not configured|r - run /erp clubs")
+    end
+
+    ns:Print("battle.net friends in game: %d", ns.BNetLink:RouteCount())
+    ns:Print("cached profiles: %d, transfers in progress: %d",
+        Cache:Count(), ns.Chunker:PendingCount())
+end
+
+local function listClubs()
+    local candidates = ns.ClubLink:ListCandidates()
+    if #candidates == 0 then
+        ns:Print("you are not in any Battle.net communities.")
+        ns:Print("create one, invite the other faction, then run /erp club <name>")
+        return
+    end
+    ns:Print("Battle.net communities:")
+    for _, club in ipairs(candidates) do
+        ns:Print("  %s (%d members)", club.name or "?", club.members or 0)
+    end
+end
+
+local function who()
+    local roster = Cache:Roster(600)
+    if #roster == 0 then
+        ns:Print("nobody seen recently.")
+        return
+    end
+    ns:Print("seen in the last 10 minutes:")
+    for _, entry in ipairs(roster) do
+        local mapName = entry.map and C_Map.GetMapInfo(entry.map)
+        ns:Print("  %s%s|r (%s)%s",
+            entry.faction == "H" and "|cffff4040" or "|cff4080ff",
+            entry.fullName,
+            mapName and mapName.name or "unknown",
+            entry.hasProfile and "" or " |cff808080no profile yet|r")
+    end
+end
+
+local handlers = {}
+
+handlers.status = status
+handlers.clubs = listClubs
+handlers.who = who
+
+handlers.club = function(argument)
+    if argument == "" then
+        ns:Print("usage: /erp club <community name>")
+        return
+    end
+    ns.db.clubName = argument
+    ns.db.clubId = nil
+    if ns.ClubLink:Resolve() then
+        ns:Print("relaying through |cff40ff40%s|r / %s",
+            ns.ClubLink.clubDisplayName, ns.ClubLink.streamDisplayName or "?")
+    else
+        ns:Print("|cffff4040no Battle.net community named '%s'|r - try /erp clubs", argument)
+    end
+end
+
+handlers.stream = function(argument)
+    ns.db.streamName = argument ~= "" and argument or nil
+    if ns.ClubLink:Resolve() then
+        ns:Print("using channel %s", ns.ClubLink.streamDisplayName or "?")
+    else
+        ns:Print("|cffff4040could not bind that channel|r")
+    end
+end
+
+handlers.fetch = function(argument)
+    local fullName = Util.QualifyName(argument)
+    if not fullName then
+        ns:Print("usage: /erp fetch <name>")
+        return
+    end
+    if ns.Sync:RequestFull(fullName, true) then
+        ns:Print("requested %s", fullName)
+    else
+        ns:Print("|cffff4040no way to reach %s right now|r", fullName)
+    end
+end
+
+handlers.forget = function(argument)
+    local fullName = Util.QualifyName(argument)
+    if not fullName then return end
+    Cache:Forget(fullName)
+    ns:Fire("ROSTER_UPDATED")
+    ns:Print("forgot %s", fullName)
+end
+
+handlers.on = function()
+    ns.db.enabled = true
+    ns:Print("relay enabled.")
+end
+
+handlers.off = function()
+    ns.db.enabled = false
+    ns:Print("relay disabled.")
+end
+
+handlers.debug = function()
+    ns.db.debug = not ns.db.debug
+    ns:Print("debug logging %s", ns.db.debug and "on" or "off")
+end
+
+handlers.reset = function()
+    ns.Config:Reset()
+    ns:Fire("ROSTER_UPDATED")
+    ns:Print("settings and cache reset.")
+end
+
+handlers.help = usage
+
+function Slash:OnEnable()
+    SLASH_ENEMYRP1 = "/erp"
+    SLASH_ENEMYRP2 = "/enemyrp"
+
+    SlashCmdList.ENEMYRP = function(input)
+        local command, argument = (input or ""):match("^(%S*)%s*(.-)%s*$")
+        command = (command or ""):lower()
+
+        if command == "" then
+            ns.Roster:Toggle()
+            return
+        end
+
+        local handler = handlers[command]
+        if handler then
+            handler(argument or "")
+        else
+            ns:Print("|cffff4040unknown command '%s'|r", command)
+            usage()
+        end
+    end
+end

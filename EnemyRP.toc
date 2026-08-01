@@ -1,0 +1,28 @@
+## Interface: 110200
+## Title: Enemy RP
+## Notes: See roleplay profiles across the faction divide.
+## Author: Enemy RP contributors
+## Version: 0.1.0
+## SavedVariables: EnemyRPDB
+## X-License: MIT
+## X-Category: Roleplay
+## OptionalDeps: TotalRP3, MyRolePlay, XRP, TotalRP3_Extended
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+
+Core/Init.lua
+Core/Util.lua
+Core/Config.lua
+Core/Codec.lua
+Core/Protocol.lua
+Core/Chunker.lua
+
+Transport/Relay.lua
+Transport/ClubLink.lua
+Transport/BNetLink.lua
+
+Profile/Cache.lua
+Profile/MSPBridge.lua
+Profile/Sync.lua
+
+UI/Slash.lua
+UI/Roster.lua

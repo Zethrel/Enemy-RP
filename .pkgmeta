@@ -1,0 +1,6 @@
+package-as: EnemyRP
+
+ignore:
+  - tests
+  - .github
+  - .pkgmeta
