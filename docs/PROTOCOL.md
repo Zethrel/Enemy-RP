@@ -121,6 +121,14 @@ whose `<target>` is not itself.
 responder omits any field whose version matches, so re-asking for an unchanged
 profile costs one small frame and produces no reply at all.
 
+**Versions are not counters.** Total RP 3 assigns large random values, routinely
+above 2^31. They are decimal integers on the wire with no upper bound in the
+grammar, and implementations must not push them through a signed 32-bit
+integer — WoW's Lua raises "integer overflow attempting to store N" if you
+format one with `%d`. Render with `%.0f` or equivalent. A version that cannot be
+represented as an exact integer (above 2^53) is treated as malformed and the
+field is dropped.
+
 Responders rate limit per requesting name (`requestsPerMinute`, default 6).
 
 ### `RS` — response

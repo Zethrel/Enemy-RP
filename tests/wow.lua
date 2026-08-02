@@ -15,6 +15,36 @@
 local wow = {}
 
 --------------------------------------------------------------------------------
+-- Matching WoW's integer formatting
+--
+-- WoW's Lua pushes %d through a signed 32-bit integer and raises "integer
+-- overflow attempting to store N" outside that range. Standard Lua on a 64-bit
+-- host quietly formats the same value through a 64-bit long, which is exactly
+-- how a crash on real profile data got past this suite: Total RP 3 assigns
+-- large random version numbers, and the fixtures here used small ones.
+--
+-- Reproducing the limit costs one wrapper and turns that whole class of bug
+-- into a test failure. It patches the global string table because `("%d"):
+-- format(...)` resolves through the string metatable, which is per-state.
+--------------------------------------------------------------------------------
+
+local rawFormat = string.format
+local INT32_MAX, INT32_MIN = 2147483647, -2147483648
+
+function string.format(template, ...)
+    if type(template) == "string" and template:find("%%[%d%.%-%+ #]*d") then
+        for index = 1, select("#", ...) do
+            local value = select(index, ...)
+            if type(value) == "number" and (value > INT32_MAX or value < INT32_MIN) then
+                error(rawFormat("integer overflow attempting to store %s",
+                    rawFormat("%.0f", value)), 2)
+            end
+        end
+    end
+    return rawFormat(template, ...)
+end
+
+--------------------------------------------------------------------------------
 -- Shared world state
 --------------------------------------------------------------------------------
 

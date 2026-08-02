@@ -65,7 +65,9 @@ local alice = wow.newClient({
             DE = LONG_BIO,
             TT = "",
         },
-        myver = { NA = 3, NT = 1, RA = 1, RC = 1, CU = 4, DE = 7, TT = 12 },
+        -- Total RP 3 assigns large random version numbers, not counters.
+        myver = { NA = 3, NT = 1924207462, RA = 1, RC = 2021981832,
+                  CU = 4, DE = 3652965745, TT = 4294967295 },
     },
 })
 
@@ -214,6 +216,58 @@ checkEqual("malformed heartbeat", Protocol.DecodeHeartbeat("nope"), nil)
 
 --------------------------------------------------------------------------------
 
+suite("Version numbers")
+
+-- Total RP 3 assigns large random field versions rather than counters, and
+-- WoW's Lua raises on %d above 2^31. Every version on the wire has to survive
+-- that; tests/wow.lua reproduces the limit so this suite means something.
+local Util = aliceNS.Util
+
+checkEqual("a version above 2^31 formats exactly",
+    Util.FormatVersion(3652965745), "3652965745")
+checkEqual("and the top of the 32-bit range",
+    Util.FormatVersion(4294967295), "4294967295")
+-- The point of %.0f over tostring: no exponent, at any magnitude a version
+-- could legitimately reach.
+checkEqual("no exponent creeps in", Util.FormatVersion(1e15), "1000000000000000")
+checkEqual("past exact integer precision becomes unversioned",
+    Util.FormatVersion(2 ^ 54), "0")
+checkEqual("a float is rendered without a decimal point",
+    Util.FormatVersion(42.0), "42")
+checkEqual("nil becomes unversioned", Util.FormatVersion(nil), "0")
+checkEqual("negative becomes unversioned", Util.FormatVersion(-5), "0")
+checkEqual("infinity becomes unversioned", Util.FormatVersion(math.huge), "0")
+
+checkEqual("a large version parses", Util.ToVersion("3652965745"), 3652965745)
+checkEqual("an absurd version is refused", Util.ToVersion(("9"):rep(400)), nil)
+checkEqual("a non-number is refused", Util.ToVersion("banana"), nil)
+
+local bigEntries = {
+    { field = "DE", version = 3652965745, value = "a bio" },
+    { field = "NA", version = 4294967295, value = "a name" },
+}
+local bigDecoded = Protocol.DecodeFields(Protocol.EncodeFields(bigEntries))
+checkEqual("large versions survive a field round trip", bigDecoded[1].version, 3652965745)
+checkEqual("and so does the value", bigDecoded[1].value, "a bio")
+checkEqual("including the 32-bit maximum", bigDecoded[2].version, 4294967295)
+
+local _, bigKnown = Protocol.DecodeRequest(
+    Protocol.EncodeRequest("Bob-MoonGuard", { DE = 3652965745 }))
+checkEqual("large versions survive a request round trip", bigKnown.DE, 3652965745)
+
+local _, bigTooltip = Protocol.DecodeHeartbeat(
+    Protocol.EncodeHeartbeat(84, 4294967295, "deadbeef"))
+checkEqual("large versions survive a heartbeat", bigTooltip, 4294967295)
+
+-- A peer is free to send four hundred digits; tonumber makes that infinity,
+-- which would poison every later comparison and format.
+check("an absurd version on the wire is dropped, not stored",
+    #Protocol.DecodeFields("DE^" .. ("9"):rep(400) .. "^t:payload") == 0)
+check("a heartbeat with an absurd version does not raise",
+    pcall(Protocol.DecodeHeartbeat, "84 " .. ("9"):rep(400) .. " deadbeef"))
+
+--------------------------------------------------------------------------------
+
 suite("Chunking")
 
 local Chunker = aliceNS.Chunker
@@ -270,6 +324,8 @@ checkEqual("title arrived intact", aliceRecord.fields.NT,
 checkEqual("multi-line field arrived intact", aliceRecord.fields.CU,
     "Standing watch\nby the gate")
 checkEqual("version recorded", aliceRecord.versions.NA, 3)
+checkEqual("a large version survives the wire",
+    aliceRecord.versions.NT, 1924207462)
 
 local injected = bob.env.msp.char["Alice-MoonGuard"]
 checkEqual("profile injected into the local RP addon", injected.field.NA, "Alice the Bold")
@@ -287,7 +343,7 @@ bobNS.Sync:RequestFull("Alice-MoonGuard", true)
 wow.advance(10)
 
 checkEqual("long description arrived intact", aliceRecord.fields.DE, LONG_BIO)
-checkEqual("description version", aliceRecord.versions.DE, 7)
+checkEqual("description version", aliceRecord.versions.DE, 3652965745)
 checkEqual("injected description", bob.env.msp.char["Alice-MoonGuard"].field.DE, LONG_BIO)
 
 --------------------------------------------------------------------------------

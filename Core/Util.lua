@@ -69,6 +69,44 @@ function Util.ShortName(fullName)
 end
 
 --------------------------------------------------------------------------------
+-- Version numbers
+--
+-- Mary Sue Protocol field versions are not counters. Total RP 3 assigns large
+-- random values, routinely above 2^31, and WoW's Lua pushes %d through a signed
+-- 32-bit integer -- formatting one that way raises "integer overflow attempting
+-- to store N" and takes the addon down. Versions are therefore rendered with
+-- %.0f, which has no such limit and no exponent, and are never passed to %d.
+--------------------------------------------------------------------------------
+
+-- Beyond this, a Lua number can no longer represent consecutive integers, so a
+-- version would not survive its own round trip.
+local MAX_VERSION = 2 ^ 53
+
+local function isFinite(number)
+    return number == number and number ~= math.huge and number ~= -math.huge
+end
+
+--- Render a version for the wire. Anything unusable becomes 0, which the
+--- protocol already means as "unversioned".
+function Util.FormatVersion(version)
+    version = tonumber(version)
+    if not version or not isFinite(version) or version < 0 or version > MAX_VERSION then
+        version = 0
+    end
+    return ("%.0f"):format(version)
+end
+
+--- Parse a version off the wire, or nil if it could not be one. A peer is free
+--- to send four hundred digits; tonumber turns that into infinity, and an
+--- infinite version would poison every later comparison and format.
+function Util.ToVersion(text)
+    local version = tonumber(text)
+    if not version or not isFinite(version) then return nil end
+    if version < 0 or version > MAX_VERSION then return nil end
+    return math.floor(version)
+end
+
+--------------------------------------------------------------------------------
 -- Hashing
 --------------------------------------------------------------------------------
 

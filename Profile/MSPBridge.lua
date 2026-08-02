@@ -92,8 +92,8 @@ function Bridge:Fingerprint()
     local parts = {}
     for _, field in ipairs(self.ALL_FIELDS) do
         local value, version = self:GetMyField(field)
-        parts[#parts + 1] = ("%s=%d:%s"):format(
-            field, version or 0, value ~= nil and tostring(value) or "")
+        parts[#parts + 1] = ("%s=%s:%s"):format(
+            field, Util.FormatVersion(version), value ~= nil and tostring(value) or "")
     end
     return Util.Hash(table.concat(parts, "\30"))
 end

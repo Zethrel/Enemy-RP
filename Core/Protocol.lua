@@ -133,8 +133,8 @@ function Protocol.EncodeFields(entries)
     local parts = {}
     for index = 1, #entries do
         local entry = entries[index]
-        parts[index] = ("%s^%d^%s"):format(
-            entry.field, entry.version or 0, Codec.Pack(entry.value or ""))
+        parts[index] = ("%s^%s^%s"):format(
+            entry.field, Util.FormatVersion(entry.version), Codec.Pack(entry.value or ""))
     end
     return table.concat(parts, "~")
 end
@@ -147,10 +147,11 @@ function Protocol.DecodeFields(payload)
         local field, version, packed = part:match("^(%u%u)%^(%d+)%^(.*)$")
         if field then
             local value = Codec.Unpack(packed)
-            if value then
+            version = Util.ToVersion(version)
+            if value and version then
                 entries[#entries + 1] = {
                     field = field,
-                    version = tonumber(version),
+                    version = version,
                     value = value,
                 }
             end
@@ -169,7 +170,7 @@ end
 function Protocol.EncodeRequest(target, known)
     local parts = {}
     for field, version in pairs(known) do
-        parts[#parts + 1] = ("%s=%d"):format(field, version or 0)
+        parts[#parts + 1] = ("%s=%s"):format(field, Util.FormatVersion(version))
     end
     table.sort(parts)
     return target .. " " .. table.concat(parts, ",")
@@ -182,7 +183,7 @@ function Protocol.DecodeRequest(payload)
 
     local known = {}
     for field, version in (list or ""):gmatch("(%u%u)=(%d+)") do
-        known[field] = tonumber(version)
+        known[field] = Util.ToVersion(version) or 0
     end
     return target, known
 end
@@ -195,14 +196,15 @@ end
 --------------------------------------------------------------------------------
 
 function Protocol.EncodeHeartbeat(mapId, tooltipVersion, fingerprint)
-    return ("%d %d %s"):format(mapId or 0, tooltipVersion or 0, fingerprint or "0")
+    return ("%d %s %s"):format(
+        mapId or 0, Util.FormatVersion(tooltipVersion), fingerprint or "0")
 end
 
 function Protocol.DecodeHeartbeat(payload)
     if type(payload) ~= "string" then return nil end
     local mapId, tooltipVersion, fingerprint = payload:match("^(%d+) (%d+) (%w+)$")
     if not mapId then return nil end
-    return tonumber(mapId), tonumber(tooltipVersion), fingerprint
+    return tonumber(mapId), Util.ToVersion(tooltipVersion) or 0, fingerprint
 end
 
 --------------------------------------------------------------------------------
