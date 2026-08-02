@@ -29,13 +29,15 @@ local pending = {} -- "sender/id" -> { total, received, parts, expires, sender }
 --------------------------------------------------------------------------------
 
 --- How many payload bytes fit in one frame once framing overhead is removed.
-local function chunkCapacity()
+--- The limit differs per transport: a Battle.net community message can be far
+--- longer than an addon message, which the server caps at 255 characters.
+local function chunkCapacity(maxFrameLength)
     local overhead = #Protocol.BuildFrame("0000", 255, 255, "")
-    return math.max(64, (ns.db.maxFrameLength or 900) - overhead)
+    return math.max(64, (maxFrameLength or ns.db.maxFrameLength or 900) - overhead)
 end
 
-function Chunker:Split(body)
-    local capacity = chunkCapacity()
+function Chunker:Split(body, maxFrameLength)
+    local capacity = chunkCapacity(maxFrameLength)
     if #body <= capacity then return { body } end
 
     local chunks = {}

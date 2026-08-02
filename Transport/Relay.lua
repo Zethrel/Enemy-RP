@@ -48,28 +48,32 @@ end
 -- Outbound
 --------------------------------------------------------------------------------
 
-local function framesFor(body)
-    local chunks = Chunker:Split(body)
-    local id = Protocol.NextId()
-    local frames = {}
+--- Chunk a body to suit one backend and hand each frame to `send`.
+---
+--- The message id is chosen once by the caller and reused across backends. A
+--- peer reachable on two of them at once therefore sees the same id with
+--- different chunk counts: the first complete copy wins, the other's chunks are
+--- either suppressed as duplicates or expire as an incomplete buffer. Fresh ids
+--- per backend would instead deliver the message twice, which is harmless for a
+--- profile and very much not for a line of chat.
+local function sendVia(backend, body, id, send)
+    local chunks = Chunker:Split(body, backend.maxFrameLength)
     for index = 1, #chunks do
-        frames[index] = Protocol.BuildFrame(id, index, #chunks, chunks[index])
+        send(Protocol.BuildFrame(id, index, #chunks, chunks[index]))
     end
-    return frames
 end
 
 --- Send to every peer that can hear us.
 function Relay:Broadcast(opcode, payload)
     if not ns.db.enabled then return false end
 
-    local frames = framesFor(Protocol.BuildBody(opcode, payload))
+    local body = Protocol.BuildBody(opcode, payload)
+    local id = Protocol.NextId()
     local delivered = false
 
     for _, backend in ipairs(backends) do
         if backend.CanBroadcast and backend:CanBroadcast() and backend:IsReady() then
-            for _, frame in ipairs(frames) do
-                backend:Broadcast(frame)
-            end
+            sendVia(backend, body, id, function(frame) backend:Broadcast(frame) end)
             delivered = true
         end
     end
@@ -85,11 +89,12 @@ end
 function Relay:SendTo(fullName, opcode, payload)
     if not ns.db.enabled then return false end
 
+    local body = Protocol.BuildBody(opcode, payload)
+    local id = Protocol.NextId()
+
     for _, backend in ipairs(backends) do
         if backend.CanReach and backend:IsReady() and backend:CanReach(fullName) then
-            for _, frame in ipairs(framesFor(Protocol.BuildBody(opcode, payload))) do
-                backend:SendTo(fullName, frame)
-            end
+            sendVia(backend, body, id, function(frame) backend:SendTo(fullName, frame) end)
             ns:Debug("sent %s to %s via %s", opcode, fullName, backend.name)
             return true
         end
@@ -126,6 +131,17 @@ function Relay:Incoming(text, context)
     local frame = Protocol.ParseFrame(text)
     if not frame then return end
     if frame.sender == Util.PlayerFullName() then return end
+
+    -- Addon-channel transports report a server-authenticated sender. Where we
+    -- have one, the name claimed inside the frame has to match it -- which
+    -- makes party, raid and guild traffic the only path in this addon that
+    -- cannot be spoofed. Community frames carry no such witness.
+    if context and context.verifiedSender and frame.sender ~= context.verifiedSender then
+        ns:Debug("dropping frame from %s claiming to be %s",
+            context.verifiedSender, frame.sender)
+        return
+    end
+
     if isDuplicate(frame) then return end
 
     local body = Chunker:Feed(frame)

@@ -5,8 +5,9 @@ See roleplay profiles across the faction divide.
 World of Warcraft will not deliver an addon message from a Horde character to an
 Alliance one, so Total RP 3, MyRolePlay and XRP all go quiet the moment the
 other faction walks into the tavern. Enemy RP carries the same profile data over
-a channel that *does* cross factions — a Battle.net community — and hands what
-arrives to whichever roleplay addon you already run.
+the channels that *do* cross factions — your party, your guild, your Battle.net
+friends, or a shared community — and hands what arrives to whichever roleplay
+addon you already run.
 
 It speaks [Mary Sue Protocol](docs/PROTOCOL.md#mary-sue-protocol-fields), the
 format Total RP 3, MyRolePlay and XRP share, so a Horde Total RP user and an
@@ -38,27 +39,37 @@ reason an addon shows up as out of date.
 
 ## Setting it up
 
-Enemy RP needs a shared channel that both factions can reach. Battle.net
-communities are the only thing in the game that qualifies for players who are
-not grouped.
+Often: nothing. Enemy RP uses whichever cross-faction channel you already have.
+
+| If you are… | Setup needed |
+| --- | --- |
+| In a party or raid together | **None.** Just group up |
+| In a cross-faction guild | **None** |
+| Battle.net friends | **None** |
+| Strangers in the open world | Share a Battle.net community |
+
+**Grouping is the best case**, and it is the one cross-faction world roleplay
+usually already satisfies. Party, raid and instance groups carry everything —
+profiles and chat — with nothing to join and nothing to configure. They are also
+the only channel where the server tells the addon who really sent each message,
+so nobody in your group can impersonate anyone else.
+
+For strangers, a Battle.net community is the only thing in the game that
+reaches them:
 
 1. One person creates a Battle.net community (Guild & Communities → Battle.net
-   Community) and, ideally, adds a channel named `relay` to it. The addon
-   prefers a channel with that name and falls back to General, so a dedicated
-   channel keeps relay traffic out of whatever your members actually read.
-2. Share the community's invite link with everyone, on both factions.
-3. Each person joins, then runs:
+   Community) and adds a channel named **`relay`** to it. The name matters: the
+   addon treats a channel called `relay` as an explicit invitation and starts
+   using it with no command. It also keeps protocol traffic out of whatever
+   channel your members actually read.
+2. Share the invite link. Everyone joins, on both factions.
+3. That is all. `/erp status` should show the community in green.
 
-   ```
-   /erp club Name Of The Community
-   ```
-
-4. `/erp status` should now show the community in green.
-
-Cross-faction Battle.net **friends** work with no community at all — those
-exchanges go point to point over Battle.net instead of through the relay. If
-everyone you roleplay with is already on your friends list, you can skip the
-community entirely.
+The addon listens on every Battle.net community you belong to, so it will find
+the right one by itself. It will **not** send into a community until it has
+reason to think it belongs there — the channel is named `relay`, or relay
+traffic has already been seen on it, or you named it with `/erp club <name>` —
+so it can never dump protocol frames into an unrelated community's chat.
 
 ## Using it
 
@@ -124,17 +135,23 @@ configured community, which is a real change: a community is not the same as
 "players standing near me". Assume anyone in it can read your profile, and that
 your character's name, current zone, and online times are visible to them.
 
-Relay frames carry the sender's character name in the payload, and nothing
-prevents a member of the community from putting someone else's name there.
-Profiles and relayed chat are therefore claims, not proof of identity. Treat
-them the way you would treat a whisper from an unverified alt.
+How much a relayed name can be trusted depends on how it reached you:
 
-This matters more for chat than for profiles: someone in your community can put
-words in another character's mouth, and the addon cannot tell. What it does do
-is strip every escape sequence from relayed text before displaying it, so a
-sender cannot inject clickable links or colour codes into your chat frame, rate
-limit each sender, and honour your ignore list. If a name is being abused, the
-practical fix is removing that person from the community.
+- **Party, raid and guild are trustworthy.** The server reports who sent each
+  addon message, and the addon drops any frame whose claimed name disagrees.
+  Nobody in your group can impersonate anyone.
+- **Community and Battle.net frames are not.** They carry the sender's name as
+  part of the payload, and nothing stops a member from writing someone else's
+  name there. Treat those the way you would treat a whisper from an unverified
+  alt.
+
+That gap matters most for chat: over a community, someone can put words in
+another character's mouth and the addon cannot tell. What it does regardless is
+strip every escape sequence from relayed text before displaying it, so a sender
+cannot inject clickable links or colour codes into your chat frame, rate limit
+each sender, and honour your ignore list. If a name is being abused, the
+practical fix is removing that person from the community — or doing your
+roleplay in a group, where the problem does not exist.
 
 Chat is only broadcast when a cross-faction character has been heard from on
 your map recently, so an empty room costs nothing.
@@ -151,8 +168,10 @@ lua5.1 tests/run.lua
 
 It covers the encoder, the frame parser (including a fuzz pass over mutated
 frames), chunk reassembly, a full two-client exchange from heartbeat to injected
-profile, and the chat relay end to end including range, gating and the display
-sanitizer. Please keep it green.
+profile, the chat relay end to end including range, gating and the display
+sanitizer, and each transport in isolation — party with no community in sight,
+guild, sender-spoofing rejection, and community auto-discovery. Please keep it
+green.
 
 `docs/PROTOCOL.md` is the normative description of the wire format. Changing the
 format means bumping `ns.PROTOCOL` in `Core/Init.lua`, which also changes the

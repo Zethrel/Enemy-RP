@@ -10,20 +10,36 @@ negotiation.
 
 ## Transports
 
-A transport carries opaque text between clients. Two exist:
+A transport carries opaque text between clients. Four exist:
 
-| Transport | Reach | Direction |
-| --- | --- | --- |
-| Battle.net community | Everyone in the configured community | Broadcast only |
-| Battle.net friend | One character, if a friend is logged into it | Directed only |
+| Transport | Reach | Direction | Frame cap | Sender |
+| --- | --- | --- | --- | --- |
+| Party / raid / instance | Everyone in the group | Broadcast | 240 | Verified |
+| Guild | Every online guild member | Broadcast | 240 | Verified |
+| Battle.net friend | One character a friend is logged into | Directed | 900 | Unverified |
+| Battle.net community | Everyone in that community | Broadcast | 900 | Unverified |
 
-The community is the discovery mechanism: it is the only way to learn that a
-character on the other faction exists. Directed sends are preferred whenever a
-route exists, because a profile transfer concerns exactly two people and has no
-business in a shared channel.
+The community is the discovery mechanism of last resort: it is the only way to
+learn that a stranger on the other faction exists. Everything else requires a
+relationship you already have — a group, a guild, a friends list — and is
+preferred when available, because it is narrower and, for the addon-message
+transports, authenticated.
 
-Neither transport is trusted. Every field below is parsed defensively and a
-malformed value causes the frame to be dropped, never an error.
+**Frame caps differ per transport.** The server limits an addon message to 255
+characters where a community message allows far more, so a body is chunked
+separately for each transport it goes out on. The message id is chosen once and
+reused across transports: a peer reachable on two of them sees the same id with
+different chunk counts, so the first complete copy wins and the rest are
+suppressed as duplicates or expire as incomplete buffers. Assigning fresh ids
+per transport would deliver the same message twice.
+
+**Sender verification.** `CHAT_MSG_ADDON` reports a sender the server filled in.
+Where a transport provides one, the name inside the frame must match it, or the
+frame is dropped — so party, raid and guild traffic cannot be spoofed. Community
+and Battle.net frames carry no such witness and their sender is a claim.
+
+No transport is trusted for content. Every field below is parsed defensively and
+a malformed value causes the frame to be dropped, never an error.
 
 ## Frames
 
@@ -52,12 +68,14 @@ A chunk boundary can fall on a space, and without a sentinel that space would be
 silently lost, corrupting the reassembled body. Parsers must remove exactly one
 trailing character.
 
-Frames are capped at `maxFrameLength` (default 900) characters. Both transports
-accept more; the margin is deliberate.
+Frames are capped by the transport carrying them — 240 characters for addon
+messages, `maxFrameLength` (default 900) for the rest. Both limits sit under what
+the server actually accepts; the margin is deliberate.
 
-`<sender>` is a **claim**. Nothing in the protocol proves that the sender of a
-community message is the character named in it. Consumers must not treat a name
-as authenticated.
+`<sender>` is a **claim** on any transport that does not supply its own. On
+party, raid and guild it is checked against the server's sender and a mismatch
+drops the frame; on the community and Battle.net it is unverifiable, and
+consumers must not treat it as identity.
 
 ## Bodies
 
@@ -144,10 +162,11 @@ shared continent is treated as out of range.
 Range is the receiver's policy, not the sender's: defaults are 40 yards for say
 and emote, 300 for yell.
 
-Nothing here is authenticated. A community member can send `CH` claiming any
-name, at any position, at any time. The range check, the per-sender rate limit
-and the ignore list make relayed chat *behave*; they do not make it *true*.
-Receivers must therefore:
+Over the community, nothing here is authenticated: a member can send `CH`
+claiming any name, at any position, at any time. The range check, the per-sender
+rate limit and the ignore list make relayed chat *behave*; they do not make it
+*true*. (Over party, raid and guild the sender is verified, so chat on those
+transports is as trustworthy as the game's own.) Receivers must therefore:
 
 - strip every escape sequence from the text before display (see below),
 - rate limit per sender,

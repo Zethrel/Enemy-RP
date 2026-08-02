@@ -554,5 +554,177 @@ check("a flooding sender is cut off", flooded < 60, flooded)
 
 --------------------------------------------------------------------------------
 
+suite("Party transport: no community, no friends")
+
+-- Cara and Dane belong to no Battle.net community and are not friends. All they
+-- share is a party, which is how cross-faction world roleplay actually happens.
+local cara = wow.newClient({
+    name = "Cara", normalizedRealm = "MoonGuard", faction = "Alliance",
+    mapId = 84, position = { x = 0.5, y = 0.5 }, clubs = false,
+    group = { { fullName = "Dane-MoonGuard", faction = "Horde" } },
+    msp = {
+        my = { NA = "Cara Emberlight", RA = "Night Elf", DE = LONG_BIO, TT = "" },
+        myver = { NA = 2, RA = 1, DE = 5, TT = 9 },
+    },
+})
+local dane = wow.newClient({
+    name = "Dane", normalizedRealm = "MoonGuard", faction = "Horde",
+    mapId = 84, position = { x = 0.5, y = 0.5 }, clubs = false,
+    group = { { fullName = "Cara-MoonGuard", faction = "Alliance" } },
+    msp = { my = { NA = "Dane Stormfang" }, myver = { NA = 1, TT = 1 } },
+})
+
+local caraNS = wow.load(cara, ROOT)
+local daneNS = wow.load(dane, ROOT)
+
+check("Cara has no community to send to", caraNS.ClubLink.channel == nil)
+check("the party backend is ready", caraNS.AddonLink.Group:IsReady())
+checkEqual("the party roster resolved", caraNS.AddonLink:GroupCount(), 1)
+check("Cara can reach Dane directly",
+    caraNS.AddonLink.Group:CanReach("Dane-MoonGuard"))
+
+local clubBefore, addonBefore = wow.world.nextMessageId, wow.world.addonMessages
+caraNS.Sync:SendHeartbeat()
+wow.advance(5)
+
+check("the party carried the traffic", wow.world.addonMessages > addonBefore)
+checkEqual("no community was involved", wow.world.nextMessageId, clubBefore)
+
+local caraRecord = daneNS.Cache:Get("Cara-MoonGuard")
+check("Dane heard Cara", caraRecord ~= nil)
+checkEqual("and pulled her profile", caraRecord and caraRecord.fields.NA, "Cara Emberlight")
+
+-- An addon message caps at 255 characters against a community's 900, so the
+-- long description has to survive a much finer chunking.
+daneNS.Sync:RequestFull("Cara-MoonGuard", true)
+wow.advance(10)
+checkEqual("a long profile survives 240-character frames",
+    caraRecord.fields.DE, LONG_BIO)
+
+local groupChunks = #caraNS.Chunker:Split("RS " .. LONG_BIO, 240)
+local clubChunks = #caraNS.Chunker:Split("RS " .. LONG_BIO, 900)
+check("small frames really do split further", groupChunks > clubChunks,
+    groupChunks .. " vs " .. clubChunks)
+
+-- Chat across the party, with no community anywhere in sight.
+dane.env.__chatLog = {}
+cara.fire("CHAT_MSG_SAY", "well met, orc", "Cara", nil, nil, nil, nil,
+    nil, nil, nil, nil, nil, "Player-Cara")
+wow.advance(2)
+checkEqual("party chat relay reaches the other faction", #dane.env.__chatLog, 1)
+checkEqual("with the roleplay name", dane.env.__chatLog[1],
+    "|cff4080ffCara Emberlight|r says: well met, orc")
+
+--------------------------------------------------------------------------------
+
+suite("Party transport: the server vouches for the sender")
+
+-- Unlike a community, an addon message carries a sender the server filled in.
+-- A frame whose in-band name disagrees with it is a forgery.
+local caraProfile = daneNS.Cache:Get("Cara-MoonGuard")
+local nameBefore = caraProfile.fields.NA
+
+dane.fire("CHAT_MSG_ADDON", "ERP1",
+    "ERP1 Cara-MoonGuard A ff01 1 1 RS NA^99^t:Not Cara At All#",
+    "PARTY", "Evil-MoonGuard")
+wow.advance(1)
+checkEqual("a frame claiming someone else's name is dropped",
+    daneNS.Cache:Get("Cara-MoonGuard").fields.NA, nameBefore)
+
+dane.env.__chatLog = {}
+dane.fire("CHAT_MSG_ADDON", "ERP1",
+    "ERP1 Cara-MoonGuard A ff02 1 1 CH S 84 0.5000 0.5000 t:words in her mouth#",
+    "PARTY", "Evil-MoonGuard")
+wow.advance(1)
+checkEqual("and cannot put words in her mouth either", #dane.env.__chatLog, 0)
+
+-- The same frame from the character it claims to be is accepted, which proves
+-- the check is on the mismatch and not on the frame itself.
+dane.fire("CHAT_MSG_ADDON", "ERP1",
+    "ERP1 Cara-MoonGuard A ff03 1 1 RS NA^99^t:Cara Renamed#",
+    "PARTY", "Cara-MoonGuard")
+wow.advance(1)
+checkEqual("the genuine sender is believed",
+    daneNS.Cache:Get("Cara-MoonGuard").fields.NA, "Cara Renamed")
+
+--------------------------------------------------------------------------------
+
+suite("Guild transport")
+
+local eve = wow.newClient({
+    name = "Eve", normalizedRealm = "MoonGuard", faction = "Alliance",
+    mapId = 84, position = { x = 0.5, y = 0.5 }, clubs = false,
+    guild = { { fullName = "Finn-MoonGuard", online = true } },
+    msp = { my = { NA = "Eve Duskwhisper", TT = "" }, myver = { NA = 4, TT = 3 } },
+})
+local finn = wow.newClient({
+    name = "Finn", normalizedRealm = "MoonGuard", faction = "Horde",
+    mapId = 84, position = { x = 0.5, y = 0.5 }, clubs = false,
+    guild = { { fullName = "Eve-MoonGuard", online = true } },
+    msp = { my = { NA = "Finn Ironhide" }, myver = { NA = 1, TT = 1 } },
+})
+
+local eveNS = wow.load(eve, ROOT)
+local finnNS = wow.load(finn, ROOT)
+wow.advance(3) -- the guild roster refresh is deferred
+
+check("the guild backend is ready", eveNS.AddonLink.Guild:IsReady())
+checkEqual("the guild roster resolved", eveNS.AddonLink:GuildCount(), 1)
+check("Eve is not grouped with anyone", not eveNS.AddonLink.Group:IsReady())
+
+eveNS.Sync:SendHeartbeat()
+wow.advance(5)
+
+local eveRecord = finnNS.Cache:Get("Eve-MoonGuard")
+check("a cross-faction guildmate is heard", eveRecord ~= nil)
+checkEqual("and their profile arrives", eveRecord and eveRecord.fields.NA,
+    "Eve Duskwhisper")
+
+--------------------------------------------------------------------------------
+
+suite("Community auto-discovery")
+
+-- A channel actually named "relay" is an unambiguous opt-in, so no command is
+-- needed and nothing has to be overheard first.
+local gwen = wow.newClient({
+    name = "Gwen", normalizedRealm = "MoonGuard", faction = "Alliance",
+    mapId = 84, position = { x = 0.5, y = 0.5 },
+    msp = { my = { NA = "Gwen", TT = "" }, myver = { NA = 1, TT = 1 } },
+})
+local gwenNS = wow.load(gwen, ROOT)
+check("a dedicated relay channel is adopted with no configuration",
+    gwenNS.ClubLink.channel ~= nil)
+checkEqual("and it is the relay channel, not general",
+    gwenNS.ClubLink.channel and gwenNS.ClubLink.channel.streamName, "relay")
+
+-- A community with only a general channel is listened to but not sent into,
+-- because dumping protocol frames into an unrelated community would be rude.
+local hal = wow.newClient({
+    name = "Hal", normalizedRealm = "MoonGuard", faction = "Horde",
+    mapId = 84, position = { x = 0.5, y = 0.5 },
+    clubStreams = { { streamId = 1, name = "General", streamType = 1 } },
+    msp = { my = { NA = "Hal", TT = "" }, myver = { NA = 1, TT = 1 } },
+})
+local halNS = wow.load(hal, ROOT)
+checkEqual("a general-only community is listened to", #halNS.ClubLink:ListChannels(), 1)
+check("but nothing is sent into it unprompted", halNS.ClubLink.channel == nil)
+
+-- Overhearing one frame is enough to establish that the addon belongs there.
+halNS.ClubLink:CLUB_MESSAGE_ADDED(99, 1, 4242)
+wow.world.clubMessages[4242] = nil
+check("still silent after a message that was not ours", halNS.ClubLink.channel == nil)
+
+wow.world.clubMessages[4243] = {
+    clubId = 99, streamId = 1,
+    content = "ERP1 Ivy-MoonGuard A aa01 1 1 HB 84 1 abcdef#",
+}
+halNS.ClubLink:CLUB_MESSAGE_ADDED(99, 1, 4243)
+check("overhearing relay traffic makes the channel usable",
+    halNS.ClubLink.channel ~= nil)
+checkEqual("and the choice is remembered for next login",
+    halNS.db.learnedClubId, 99)
+
+--------------------------------------------------------------------------------
+
 print(("\n%d passed, %d failed"):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

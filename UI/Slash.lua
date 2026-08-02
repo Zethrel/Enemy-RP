@@ -105,32 +105,58 @@ local function status()
     local host = Bridge:HostAddon()
     ns:Print("roleplay addon: %s", host or "|cffff4040none detected|r")
 
-    local club = ns.ClubLink
-    if club:IsReady() then
-        ns:Print("community: |cff40ff40%s|r / %s",
-            club.clubDisplayName or "?", club.streamDisplayName or "?")
-    elseif ns.db.clubName then
-        ns:Print("community: |cffff4040'%s' not found|r (are you still a member?)", ns.db.clubName)
+    local channels = ns.ClubLink:ListChannels()
+    local sending = ns.ClubLink.channel
+    if sending then
+        ns:Print("community: |cff40ff40%s|r / %s (listening on %d)",
+            sending.clubName or "?", sending.streamName or "?", #channels)
+    elseif #channels > 0 then
+        ns:Print("community: listening on %d, |cffffff00none to send to yet|r - /erp clubs",
+            #channels)
     else
-        ns:Print("community: |cffffff00not configured|r - run /erp clubs")
+        ns:Print("community: |cffffff00none joined|r")
     end
 
     ns:Print("chat relay: %s", ns.db.chatEnabled and "|cff40ff40on|r" or "|cffff4040off|r")
-    ns:Print("battle.net friends in game: %d", ns.BNetLink:RouteCount())
+    ns:Print("group: %s, guild: %s, battle.net friends: %d",
+        ns.AddonLink.Group:IsReady()
+            and ("|cff40ff40" .. ns.AddonLink:GroupCount() .. " nearby|r") or "not grouped",
+        ns.AddonLink.Guild:IsReady()
+            and ("|cff40ff40" .. ns.AddonLink:GuildCount() .. " online|r") or "none",
+        ns.BNetLink:RouteCount())
     ns:Print("cached profiles: %d, transfers in progress: %d",
         Cache:Count(), ns.Chunker:PendingCount())
 end
 
 local function listClubs()
-    local candidates = ns.ClubLink:ListCandidates()
-    if #candidates == 0 then
+    local channels = ns.ClubLink:ListChannels()
+    if #channels == 0 then
         ns:Print("you are not in any Battle.net communities.")
-        ns:Print("create one, invite the other faction, then run /erp club <name>")
+        ns:Print("join one that other Enemy RP users are in and it will be picked")
+        ns:Print("up automatically -- no command needed.")
         return
     end
-    ns:Print("Battle.net communities:")
-    for _, club in ipairs(candidates) do
-        ns:Print("  %s (%d members)", club.name or "?", club.members or 0)
+
+    ns:Print("listening on %d Battle.net %s:",
+        #channels, #channels == 1 and "community" or "communities")
+    for _, channel in ipairs(channels) do
+        local state
+        if channel.sending then
+            state = "|cff40ff40sending here|r"
+        elseif channel.active then
+            state = "|cffffff00relay traffic seen|r"
+        elseif channel.dedicated then
+            state = "|cff80c0ffdedicated relay channel|r"
+        else
+            state = "|cff808080listening only|r"
+        end
+        ns:Print("  %s / %s - %s", channel.clubName or "?", channel.streamName or "?", state)
+    end
+
+    if not ns.ClubLink.channel then
+        ns:Print("|cff808080nothing is sent into a community until relay traffic is seen")
+        ns:Print("there, or the channel is named 'relay', or you name one with")
+        ns:Print("/erp club <name>.|r")
     end
 end
 
@@ -165,9 +191,11 @@ handlers.club = function(argument)
     end
     ns.db.clubName = argument
     ns.db.clubId = nil
-    if ns.ClubLink:Resolve() then
+    ns.ClubLink:OnClubsChanged()
+    local channel = ns.ClubLink.channel
+    if channel then
         ns:Print("relaying through |cff40ff40%s|r / %s",
-            ns.ClubLink.clubDisplayName, ns.ClubLink.streamDisplayName or "?")
+            channel.clubName or "?", channel.streamName or "?")
     else
         ns:Print("|cffff4040no Battle.net community named '%s'|r - try /erp clubs", argument)
     end
@@ -175,8 +203,10 @@ end
 
 handlers.stream = function(argument)
     ns.db.streamName = argument ~= "" and argument or nil
-    if ns.ClubLink:Resolve() then
-        ns:Print("using channel %s", ns.ClubLink.streamDisplayName or "?")
+    ns.ClubLink:OnClubsChanged()
+    local channel = ns.ClubLink.channel
+    if channel then
+        ns:Print("using channel %s", channel.streamName or "?")
     else
         ns:Print("|cffff4040could not bind that channel|r")
     end

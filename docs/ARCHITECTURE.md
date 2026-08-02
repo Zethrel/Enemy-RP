@@ -48,19 +48,39 @@ backend:CanReach(fullName)    -- has a direct route to one character
 backend:SendTo(fullName, f)
 ```
 
-`Relay:SendTo` prefers a direct route and falls back to broadcasting. Adding a
-transport — cross-faction party chat, say, or guild for a cross-faction guild —
-means writing one file and registering it. Nothing above `Transport/` changes.
+`Relay:SendTo` prefers a direct route and falls back to broadcasting, walking
+backends in registration order — which is why the `.toc` loads the direct and
+authenticated transports before the community.
+
+Frame size is a per-backend property, not a global one: an addon message caps at
+255 characters where a community message allows thousands. `Relay` chunks the
+same body separately for each backend but reuses one message id across them.
+That matters for correctness, not tidiness. A peer reachable on two transports
+receives the same id with different chunk counts; the first complete copy wins
+and the other's chunks are suppressed or expire. Fresh ids per backend would
+deliver the message twice — harmless for a profile, very much not for chat.
+
+`AddonLink.lua` carries party, raid, instance and guild. These became
+cross-faction when grouping and guilds did, and they are the best transport
+available: nothing to join, nothing to configure, and the server reports who
+actually sent each message. That last part makes them the only path in the addon
+where a sender cannot lie — `Relay:Incoming` rejects any frame whose in-band
+name disagrees with the server's. Both backends share one file because
+`CHAT_MSG_ADDON` is a single event covering every distribution; registering it
+twice would process each message twice.
 
 `ClubLink.lua` is the Battle.net community backend, and the only one that
-reaches strangers. Two details are load-bearing:
+reaches strangers. Listening and sending are deliberately asymmetric:
 
-- `CLUB_MESSAGE_ADDED` only fires for *focused* streams, so the addon calls
-  `C_Club.FocusStream` itself rather than hoping the Communities UI has the
-  right channel open.
-- Relay frames are ordinary chat as far as the server is concerned, so a
-  `CHAT_MSG_COMMUNITIES_CHANNEL` filter hides them, and the addon prefers a
-  channel named `relay` that nobody reads by hand.
+- It listens on one channel in *every* community the player belongs to, so
+  joining a community is the entire setup. `CLUB_MESSAGE_ADDED` only fires for
+  *focused* streams, so the addon calls `C_Club.FocusStream` on each itself.
+- It refuses to send into a channel until it has grounds to think the addon is
+  welcome — the player named it, relay traffic has been seen on it, or it is
+  literally called `relay`. Broadcasting into an unrelated community would dump
+  raw protocol frames into the chat window of every member without the addon.
+- Relay frames are ordinary chat to the server, so a
+  `CHAT_MSG_COMMUNITIES_CHANNEL` filter hides them from the docked frames.
 
 `BNetLink.lua` handles Battle.net friends. It maps `Name-Realm` to a game
 account id by walking the friends list, and normalizes realm names on the way

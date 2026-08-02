@@ -27,8 +27,19 @@ local DEFAULTS = {
     clubId = nil,
     streamName = nil,
 
+    -- Learned from wherever relay traffic was last seen, so a returning player
+    -- can send immediately instead of waiting to overhear a frame.
+    learnedClubId = nil,
+    learnedStreamId = nil,
+
     -- Relay to cross-faction Battle.net friends directly, no community needed.
     useBattleNetFriends = true,
+
+    -- Party, raid and instance groups, and guild. Cross-faction and, unlike the
+    -- community, sender-authenticated by the server -- so these are preferred
+    -- for anyone reachable on them.
+    useGroup = true,
+    useGuild = true,
 
     -- Largest single relay frame. Community chat accepts more, but staying well
     -- under the limit avoids server-side truncation surprises.

@@ -24,6 +24,7 @@ local world = {
     clubMessages = {},   -- messageId -> { clubId, streamId, content }
     nextMessageId = 1,
     bnetMessages = 0,
+    addonMessages = 0,
     timers = {},
     nextTimerId = 1,
 }
@@ -35,6 +36,7 @@ function wow.reset()
     world.clubMessages = {}
     world.nextMessageId = 1
     world.bnetMessages = 0
+    world.addonMessages = 0
     world.timers = {}
 end
 
@@ -256,12 +258,17 @@ function wow.newClient(spec)
         ClubType = { BattleNet = 1, Character = 2, Guild = 3, Other = 4 },
         ClubStreamType = { General = 1, Guild = 2, Officer = 3, Other = 4 },
     }
+    -- spec.clubs = false means the character belongs to no communities.
+    -- spec.clubStreams overrides the channel list, so a test can build a
+    -- community that has no dedicated relay channel.
     env.C_Club = {
         GetSubscribedClubs = function()
-            return { { clubId = 99, name = "Cross Faction RP", clubType = 1, memberCount = 12 } }
+            if spec.clubs == false then return {} end
+            return spec.clubs
+                or { { clubId = 99, name = "Cross Faction RP", clubType = 1, memberCount = 12 } }
         end,
         GetStreams = function()
-            return {
+            return spec.clubStreams or {
                 { streamId = 1, name = "General", streamType = 1 },
                 { streamId = 2, name = "relay", streamType = 4 },
             }
@@ -286,7 +293,6 @@ function wow.newClient(spec)
     -------------------------------------------------------------- battle.net --
     env.BNET_CLIENT_WOW = "WoW"
     env.WOW_PROJECT_MAINLINE = 1
-    env.C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end }
 
     env.BNGetNumFriends = function() return #(spec.friends or {}) end
     env.C_BattleNet = {
@@ -309,6 +315,57 @@ function wow.newClient(spec)
             }
         end,
     }
+    env.C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end }
+
+    ------------------------------------------------- party, raid and guild ----
+    -- spec.group is a list of the *other* characters in the player's group;
+    -- spec.guild likewise for the guild roster. Both name clients by fullName.
+    env.LE_PARTY_CATEGORY_INSTANCE = 2
+
+    env.GetNumGroupMembers = function()
+        local group = spec.group or {}
+        -- The real API counts the player too.
+        return #group > 0 and (#group + 1) or 0
+    end
+    env.IsInGroup = function(category)
+        if category == env.LE_PARTY_CATEGORY_INSTANCE then return spec.inInstanceGroup == true end
+        return #(spec.group or {}) > 0
+    end
+    env.IsInRaid = function() return spec.inRaid == true end
+    env.IsInGuild = function() return (spec.guild ~= nil) end
+
+    env.GetNumGuildMembers = function() return #(spec.guild or {}) end
+    env.GetGuildRosterInfo = function(index)
+        local member = (spec.guild or {})[index]
+        if not member then return nil end
+        return member.fullName, nil, nil, nil, nil, nil, nil, nil, member.online ~= false
+    end
+    env.C_GuildInfo = { GuildRoster = function() end }
+
+    -- party1..partyN / raid1..raidN resolve through the same units table the
+    -- mouseover tests use.
+    local groupUnits = {}
+    for index, member in ipairs(spec.group or {}) do
+        local name, realm = member.fullName:match("^([^-]+)-(.+)$")
+        groupUnits["party" .. index] = { name = name, realm = realm, faction = member.faction }
+        groupUnits["raid" .. index] = { name = name, realm = realm, faction = member.faction }
+    end
+    spec.units = spec.units or {}
+    for unit, info in pairs(groupUnits) do spec.units[unit] = info end
+
+    env.C_ChatInfo.SendAddonMessage = function(prefix, message, channel)
+        world.addonMessages = world.addonMessages + 1
+        local reachable = (channel == "GUILD") and (spec.guild or {}) or (spec.group or {})
+        for _, member in ipairs(reachable) do
+            for _, other in ipairs(world.clients) do
+                if other.fullName == member.fullName then
+                    other.fire("CHAT_MSG_ADDON", prefix, message, channel,
+                        spec.name .. "-" .. spec.normalizedRealm)
+                end
+            end
+        end
+    end
+
     env.BNSendGameData = function(gameAccountID, prefix, message)
         world.bnetMessages = world.bnetMessages + 1
         for _, other in ipairs(world.clients) do
@@ -361,7 +418,8 @@ end
 local FILES = {
     "Core/Init.lua", "Core/Util.lua", "Core/Config.lua", "Core/Codec.lua",
     "Core/Protocol.lua", "Core/Chunker.lua", "Core/Geo.lua",
-    "Transport/Relay.lua", "Transport/ClubLink.lua", "Transport/BNetLink.lua",
+    "Transport/Relay.lua", "Transport/BNetLink.lua", "Transport/AddonLink.lua",
+    "Transport/ClubLink.lua",
     "Profile/Cache.lua", "Profile/MSPBridge.lua", "Profile/Sync.lua",
     "Chat/Outbound.lua", "Chat/Inbound.lua",
     "UI/Slash.lua", "UI/Roster.lua",
