@@ -2,7 +2,7 @@
 ## Title: Enemy RP
 ## Notes: See roleplay profiles across the faction divide.
 ## Author: Enemy RP contributors
-## Version: 0.1.0
+## Version: 0.2.2
 ## SavedVariables: EnemyRPDB
 ## X-License: GPL-3.0-or-later
 ## X-Category: Roleplay
@@ -17,9 +17,10 @@ Core/Protocol.lua
 Core/Chunker.lua
 Core/Geo.lua
 
--- Order matters: Relay:SendTo picks the first backend that can reach a
--- character, so the direct and authenticated transports register first and
--- the community broadcast is the fallback.
+# Order matters here: Relay:SendTo picks the first backend that can reach a
+# character, so the direct and authenticated transports register before the
+# community broadcast fallback. A .toc has no -- comments; only # lines,
+# ## directives and file paths.
 Transport/Relay.lua
 Transport/BNetLink.lua
 Transport/AddonLink.lua

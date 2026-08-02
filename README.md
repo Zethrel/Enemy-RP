@@ -173,6 +173,12 @@ sanitizer, and each transport in isolation — party with no community in sight,
 guild, sender-spoofing rejection, and community auto-discovery. Please keep it
 green.
 
+The harness loads exactly the files `EnemyRP.toc` lists, in that order, and
+validates the toc itself — every listed file exists, every source file is
+listed, and no line is something the client would mistake for a filename. A
+`.toc` accepts `## Key: value` directives, `#` comments, blank lines and paths;
+a `--` comment is read as a path and fails at login before any Lua runs.
+
 `docs/PROTOCOL.md` is the normative description of the wire format. Changing the
 format means bumping `ns.PROTOCOL` in `Core/Init.lua`, which also changes the
 frame magic, so old and new clients ignore each other instead of misparsing.

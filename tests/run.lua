@@ -41,6 +41,49 @@ local function checkEqual(label, actual, expected)
         ("expected %q, got %q"):format(tostring(expected), tostring(actual)))
 end
 
+suite("Table of contents")
+
+-- A .toc understands `## Key: value`, `#` comments, blank lines and file paths.
+-- Anything else is read as a path, so a stray comment makes the client try to
+-- open a file named after the comment text -- one error per line, at login,
+-- before a single Lua file runs.
+local tocFiles = wow.tocFiles(ROOT)
+check("the toc lists files", #tocFiles > 0)
+
+local badLines, missing = {}, {}
+for _, entry in ipairs(tocFiles) do
+    if not entry:match("%.lua$") then
+        badLines[#badLines + 1] = entry
+    else
+        local handle = io.open(ROOT .. "/" .. entry, "r")
+        if handle then handle:close() else missing[#missing + 1] = entry end
+    end
+end
+check("every non-comment line is a lua path", #badLines == 0,
+    table.concat(badLines, " | "))
+check("every listed file exists", #missing == 0, table.concat(missing, " | "))
+
+-- The reverse direction: a file added to the tree but never listed silently
+-- does not load in the game, while tests that call into it still pass.
+local listed = {}
+for _, entry in ipairs(tocFiles) do listed[entry] = true end
+
+local ok, pipe = pcall(io.popen, "find Core Transport Profile Chat UI -name '*.lua' 2>/dev/null")
+if ok and pipe then
+    local orphans = {}
+    for path in pipe:lines() do
+        path = path:gsub("^%./", "")
+        if not listed[path] then orphans[#orphans + 1] = path end
+    end
+    pipe:close()
+    check("every source file is listed in the toc", #orphans == 0,
+        table.concat(orphans, " | "))
+else
+    print("  skip file listing (no popen)")
+end
+
+--------------------------------------------------------------------------------
+
 --------------------------------------------------------------------------------
 -- Fixtures
 --------------------------------------------------------------------------------

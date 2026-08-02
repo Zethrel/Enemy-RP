@@ -445,22 +445,39 @@ end
 -- Loading the addon into a client
 --------------------------------------------------------------------------------
 
-local FILES = {
-    "Core/Init.lua", "Core/Util.lua", "Core/Config.lua", "Core/Codec.lua",
-    "Core/Protocol.lua", "Core/Chunker.lua", "Core/Geo.lua",
-    "Transport/Relay.lua", "Transport/BNetLink.lua", "Transport/AddonLink.lua",
-    "Transport/ClubLink.lua",
-    "Profile/Cache.lua", "Profile/MSPBridge.lua", "Profile/Sync.lua",
-    "Chat/Outbound.lua", "Chat/Inbound.lua",
-    "UI/Slash.lua", "UI/Roster.lua",
-}
+--- Parse the .toc the way the client does, so the harness loads exactly the
+--- files the game loads, in the same order.
+---
+--- This used to be a second, hand-maintained list. The two drifted, and a .toc
+--- that the game could not read still passed the whole suite -- so the list
+--- lives in one place now.
+---
+--- A .toc holds `## Key: value` metadata, `#` comments, blank lines, and file
+--- paths. Anything else is a path, which is why a stray `--` comment makes the
+--- client try to open a file named after the comment.
+function wow.tocFiles(root)
+    local files = {}
+    local handle = assert(io.open(root .. "/EnemyRP.toc", "r"),
+        "cannot open EnemyRP.toc")
+
+    for line in handle:lines() do
+        line = line:gsub("\r", ""):match("^%s*(.-)%s*$")
+        if line ~= "" and line:sub(1, 1) ~= "#" then
+            files[#files + 1] = line:gsub("\\", "/")
+        end
+    end
+
+    handle:close()
+    return files
+end
 
 function wow.load(client, root)
     local ns = {}
     client.ns = ns
 
-    for _, file in ipairs(FILES) do
-        local chunk = assert(loadfile(root .. "/" .. file))
+    for _, file in ipairs(wow.tocFiles(root)) do
+        local chunk = assert(loadfile(root .. "/" .. file),
+            "listed in EnemyRP.toc but not loadable: " .. file)
         setfenv(chunk, client.env)
         chunk("EnemyRP", ns)
     end
